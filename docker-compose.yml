@@ -1,0 +1,165 @@
+version: '3.8'
+services:
+  api-gateway:
+    image: api-gateway:latest
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      customer-service:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_CLOUD_GATEWAY_ROUTES[0].ID=product-service
+      - SPRING_CLOUD_GATEWAY_ROUTES[0].URI=http://product-service:8081
+      - SPRING_CLOUD_GATEWAY_ROUTES[0].PREDICATES[0]=Path=/products/**
+      - SPRING_CLOUD_GATEWAY_ROUTES[1].ID=order-service
+      - SPRING_CLOUD_GATEWAY_ROUTES[1].URI=http://order-service:8082
+      - SPRING_CLOUD_GATEWAY_ROUTES[1].PREDICATES[0]=Path=/orders/**
+      - SPRING_CLOUD_GATEWAY_ROUTES[2].ID=customer-service
+      - SPRING_CLOUD_GATEWAY_ROUTES[2].URI=http://customer-service:8083
+      - SPRING_CLOUD_GATEWAY_ROUTES[2].PREDICATES[0]=Path=/customers/**
+    networks:
+      - my-network
+
+  product-service:
+    image: product-service:latest
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://product-db:27017/product_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+    depends_on:
+      product-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my-network
+
+  order-service:
+    image: order-service:latest
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://order-db:27017/order_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+    depends_on:
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my-network
+
+  customer-service:
+    image: customer-service:latest
+    build:
+      context: ./customer-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://customer-db:27017/customer_db
+    depends_on:
+      customer-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my-network
+
+  product-db:
+    image: mongo:latest
+    ports:
+      - "27018:27017"
+    volumes:
+      - product-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - my-network
+
+  order-db:
+    image: mongo:latest
+    ports:
+      - "27019:27017"
+    volumes:
+      - order-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - my-network
+
+  customer-db:
+    image: mongo:latest
+    ports:
+      - "27020:27017"
+    volumes:
+      - customer-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - my-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - my-network
+
+volumes:
+  product-data:
+  order-data:
+  customer-data:
+  rabbitmq-data:
+
+networks:
+  my-network:
+    driver: bridge
